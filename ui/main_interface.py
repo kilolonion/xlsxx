@@ -72,7 +72,7 @@ class MainInterface:
             page_title=APP_TITLE,
             page_icon=APP_ICON,
             layout="wide",
-            initial_sidebar_state="expanded"
+            initial_sidebar_state="collapsed"
         )
 
         # 响应式布局，移动端自动纵向排列
