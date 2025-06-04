@@ -1,0 +1,44 @@
+# 临时文件和缓存
+temp/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+
+# IDE和编辑器文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# 日志文件
+*.log
+
+# 测试文件
+test_*.xlsx
+test_*.xls
+test_*.csv
+test_output.*
+
+# Streamlit
+.streamlit/
+
+# 其他
+*.bak
+*.tmp 
