@@ -35,7 +35,7 @@ class FileConverter:
         self.supported_output_formats = ['csv', 'pdf', 'xlsx']
     
     def convert_to_csv(self, input_path: str, output_path: str, 
-                      encoding: str = 'utf-8', separator: str = ',',
+                      encoding: str = 'utf-8-sig', separator: str = ',',
                       sheet_name: Optional[str] = None) -> bool:
         """
         转换Excel文件为CSV格式
@@ -51,15 +51,19 @@ class FileConverter:
             转换是否成功
         """
         try:
-            # 读取Excel文件
+            # 读取Excel文件，强制使用UTF-8编码
             if sheet_name:
-                df = pd.read_excel(input_path, sheet_name=sheet_name)
+                df = pd.read_excel(input_path, sheet_name=sheet_name, engine='openpyxl')
             else:
-                df = pd.read_excel(input_path, sheet_name=0)
+                df = pd.read_excel(input_path, sheet_name=0, engine='openpyxl')
             
             # 处理缺失值
             df = df.fillna('')
             
+            # 确保使用UTF-8 BOM编码保存，这样Excel可以正确识别中文
+            if encoding == 'utf-8':
+                encoding = 'utf-8-sig'
+                
             # 保存为CSV
             df.to_csv(output_path, index=False, encoding=encoding, sep=separator)
             
@@ -85,11 +89,11 @@ class FileConverter:
             转换是否成功
         """
         try:
-            # 读取Excel文件
+            # 读取Excel文件，强制使用openpyxl引擎以确保编码正确
             if sheet_name:
-                df = pd.read_excel(input_path, sheet_name=sheet_name)
+                df = pd.read_excel(input_path, sheet_name=sheet_name, engine='openpyxl')
             else:
-                df = pd.read_excel(input_path, sheet_name=0)
+                df = pd.read_excel(input_path, sheet_name=0, engine='openpyxl')
             
             # 处理缺失值
             df = df.fillna('')
@@ -180,14 +184,14 @@ class FileConverter:
         try:
             if sheet_name:
                 # 转换指定工作表
-                df = pd.read_excel(input_path, sheet_name=sheet_name)
-                df.to_excel(output_path, index=False, sheet_name=sheet_name)
+                df = pd.read_excel(input_path, sheet_name=sheet_name, engine='openpyxl')
+                df.to_excel(output_path, index=False, sheet_name=sheet_name, engine='openpyxl')
             else:
                 # 转换所有工作表
-                excel_file = pd.ExcelFile(input_path)
+                excel_file = pd.ExcelFile(input_path, engine='openpyxl')
                 with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
                     for sheet in excel_file.sheet_names:
-                        df = pd.read_excel(input_path, sheet_name=sheet)
+                        df = pd.read_excel(input_path, sheet_name=sheet, engine='openpyxl')
                         df.to_excel(writer, sheet_name=sheet, index=False)
             
             return os.path.exists(output_path)
@@ -206,7 +210,7 @@ class FileConverter:
             工作表名称列表
         """
         try:
-            excel_file = pd.ExcelFile(file_path)
+            excel_file = pd.ExcelFile(file_path, engine='openpyxl')
             return excel_file.sheet_names
         except Exception as e:
             st.error(f"读取工作表失败: {str(e)}")
@@ -227,9 +231,9 @@ class FileConverter:
         """
         try:
             if sheet_name:
-                df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=max_rows)
+                df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=max_rows, engine='openpyxl')
             else:
-                df = pd.read_excel(file_path, sheet_name=0, nrows=max_rows)
+                df = pd.read_excel(file_path, sheet_name=0, nrows=max_rows, engine='openpyxl')
             
             return df
             

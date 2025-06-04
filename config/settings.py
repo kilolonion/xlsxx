@@ -29,7 +29,12 @@ PDF_PAGE_SIZES = {
 PDF_ORIENTATIONS = ['纵向', '横向']
 
 # CSV配置
-CSV_ENCODINGS = ['UTF-8', 'GBK', 'ISO-8859-1']
+CSV_ENCODINGS = {
+    'UTF-8 BOM': 'utf-8-sig',
+    'UTF-8': 'utf-8',
+    'GBK': 'gbk',
+    'GB2312': 'gb2312'
+}
 CSV_SEPARATORS = {
     '逗号 (,)': ',',
     '分号 (;)': ';',

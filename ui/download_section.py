@@ -588,9 +588,9 @@ class DownloadSection:
         """显示文件预览"""
         try:
             if file_path.endswith('.csv'):
-                df = pd.read_csv(file_path, nrows=5)
+                df = pd.read_csv(file_path, nrows=5, encoding='utf-8-sig')
             elif file_path.endswith('.xlsx'):
-                df = pd.read_excel(file_path, nrows=5)
+                df = pd.read_excel(file_path, nrows=5, engine='openpyxl')
             else:
                 st.error("不支持预览此文件类型")
                 return
