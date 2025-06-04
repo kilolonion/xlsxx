@@ -17,8 +17,27 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.units import inch
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
 from config.settings import PDF_PAGE_SIZES, CSV_SEPARATORS
+
+
+_FONTS_REGISTERED = False
+
+
+def _register_chinese_fonts() -> None:
+    """注册用于PDF生成的中文字体"""
+    global _FONTS_REGISTERED
+    if _FONTS_REGISTERED:
+        return
+
+    try:
+        # 使用PDF内置的CID字体，避免依赖外部字体文件
+        pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
+        _FONTS_REGISTERED = True
+    except Exception:
+        _FONTS_REGISTERED = False
 
 
 class ConversionError(Exception):
@@ -235,6 +254,9 @@ class FileConverter:
             转换是否成功
         """
         try:
+            # 注册中文字体
+            _register_chinese_fonts()
+
             # 使用增强的读取方法
             df = self._read_excel_with_fallback(input_path, sheet_name)
             
@@ -257,11 +279,22 @@ class FileConverter:
             doc = SimpleDocTemplate(output_path, pagesize=pagesize)
             elements = []
             
-            # 获取样式
+            # 获取样式并设置字体
             styles = getSampleStyleSheet()
+            from reportlab.lib.styles import ParagraphStyle
+            styles.add(ParagraphStyle(
+                name='CNTitle',
+                parent=styles['Title'],
+                fontName='STSong-Light'
+            ))
+            if 'Normal' in styles:
+                styles['Normal'].fontName = 'STSong-Light'
             
             # 添加标题
-            title = Paragraph(f"数据表格 - {os.path.basename(input_path)}", styles['Title'])
+            title = Paragraph(
+                f"数据表格 - {os.path.basename(input_path)}",
+                styles.get('CNTitle', styles['Title'])
+            )
             elements.append(title)
             elements.append(Spacer(1, 12))
             
@@ -291,11 +324,11 @@ class FileConverter:
                 ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, 0), (-1, 0), 'STSong-Light'),
                 ('FONTSIZE', (0, 0), (-1, 0), 10),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+                ('FONTNAME', (0, 1), (-1, -1), 'STSong-Light'),
                 ('FONTSIZE', (0, 1), (-1, -1), 8),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black)
             ])
