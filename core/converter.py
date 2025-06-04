@@ -73,8 +73,81 @@ class FileConverter:
         for engine in engines:
             try:
                 if engine == 'xlrd':
-                    # xlrd引擎对老版本XLS支持更好
-                    df = pd.read_excel(input_path, engine='xlrd', **read_params)
+                    # xlrd引擎对老版本XLS支持更好，但需要特殊编码处理
+                    import xlrd
+                    
+                    # 打开工作簿，启用格式化信息以获得更好的编码支持
+                    workbook = xlrd.open_workbook(input_path, encoding_override='utf-8')
+                    
+                    # 确定要读取的工作表
+                    if sheet_name is not None and isinstance(sheet_name, str):
+                        if sheet_name in workbook.sheet_names():
+                            worksheet = workbook.sheet_by_name(sheet_name)
+                        else:
+                            # 如果指定的工作表不存在，使用第一个
+                            worksheet = workbook.sheet_by_index(0)
+                    else:
+                        # 使用索引或第一个工作表
+                        sheet_index = sheet_name if isinstance(sheet_name, int) else 0
+                        worksheet = workbook.sheet_by_index(sheet_index)
+                    
+                    # 读取数据并确保正确编码
+                    data = []
+                    max_rows = nrows if nrows else worksheet.nrows
+                    actual_rows = min(max_rows, worksheet.nrows)
+                    
+                    for row_idx in range(actual_rows):
+                        row_data = []
+                        for col_idx in range(worksheet.ncols):
+                            cell = worksheet.cell(row_idx, col_idx)
+                            cell_value = cell.value
+                            
+                            # 处理不同类型的单元格值
+                            if cell.ctype == xlrd.XL_CELL_TEXT:
+                                # 文本类型，确保UTF-8编码
+                                if isinstance(cell_value, bytes):
+                                    try:
+                                        cell_value = cell_value.decode('utf-8')
+                                    except UnicodeDecodeError:
+                                        try:
+                                            cell_value = cell_value.decode('gbk')
+                                        except UnicodeDecodeError:
+                                            cell_value = cell_value.decode('latin-1')
+                                elif isinstance(cell_value, str):
+                                    # 已经是字符串，保持原样
+                                    pass
+                            elif cell.ctype == xlrd.XL_CELL_NUMBER:
+                                # 数字类型
+                                if cell_value == int(cell_value):
+                                    cell_value = int(cell_value)
+                            elif cell.ctype == xlrd.XL_CELL_DATE:
+                                # 日期类型
+                                if xlrd.xldate.xldate_is_date(cell_value, workbook.datemode):
+                                    cell_value = xlrd.xldate.xldate_as_datetime(cell_value, workbook.datemode)
+                            elif cell.ctype == xlrd.XL_CELL_BOOLEAN:
+                                # 布尔类型
+                                cell_value = bool(cell_value)
+                            elif cell.ctype == xlrd.XL_CELL_EMPTY:
+                                # 空单元格
+                                cell_value = ''
+                            
+                            row_data.append(cell_value)
+                        
+                        data.append(row_data)
+                    
+                    # 创建DataFrame
+                    if data:
+                        # 第一行通常是表头
+                        if len(data) > 1:
+                            df = pd.DataFrame(data[1:], columns=data[0])
+                        else:
+                            df = pd.DataFrame(data)
+                    else:
+                        df = pd.DataFrame()
+                    
+                    # 成功读取，返回结果
+                    return df
+                    
                 else:
                     # openpyxl引擎
                     df = pd.read_excel(input_path, engine='openpyxl', **read_params)
@@ -127,12 +200,18 @@ class FileConverter:
             # 处理缺失值
             df = df.fillna('')
             
+            # 确保DataFrame中的所有文本数据都是正确编码的字符串
+            for col in df.columns:
+                if df[col].dtype == 'object':  # 通常是字符串类型
+                    df[col] = df[col].astype(str)
+            
             # 确保使用UTF-8 BOM编码保存，这样Excel可以正确识别中文
             if encoding == 'utf-8':
                 encoding = 'utf-8-sig'
-                
-            # 保存为CSV
-            df.to_csv(output_path, index=False, encoding=encoding, sep=separator)
+            
+            # 保存为CSV，显式指定错误处理方式
+            df.to_csv(output_path, index=False, encoding=encoding, sep=separator, 
+                     errors='replace')  # 使用replace处理编码错误
             
             return os.path.exists(output_path)
             
@@ -290,11 +369,30 @@ class FileConverter:
         for engine in engines:
             try:
                 if engine == 'xlrd':
-                    excel_file = pd.ExcelFile(file_path, engine='xlrd')
+                    import xlrd
+                    
+                    # 打开工作簿，处理编码
+                    workbook = xlrd.open_workbook(file_path, encoding_override='utf-8')
+                    
+                    # 获取工作表名称并确保正确编码
+                    sheet_names = []
+                    for name in workbook.sheet_names():
+                        if isinstance(name, bytes):
+                            # 如果是字节类型，尝试解码
+                            try:
+                                name = name.decode('utf-8')
+                            except UnicodeDecodeError:
+                                try:
+                                    name = name.decode('gbk')
+                                except UnicodeDecodeError:
+                                    name = name.decode('latin-1')
+                        sheet_names.append(name)
+                    
+                    return sheet_names
+                    
                 else:
                     excel_file = pd.ExcelFile(file_path, engine='openpyxl')
-                
-                return excel_file.sheet_names
+                    return excel_file.sheet_names
                 
             except Exception as e:
                 continue

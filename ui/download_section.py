@@ -588,7 +588,23 @@ class DownloadSection:
         """显示文件预览"""
         try:
             if file_path.endswith('.csv'):
-                df = pd.read_csv(file_path, nrows=5, encoding='utf-8-sig')
+                # 尝试多种编码读取CSV文件
+                encodings = ['utf-8-sig', 'utf-8', 'gbk', 'gb2312']
+                df = None
+                
+                for encoding in encodings:
+                    try:
+                        df = pd.read_csv(file_path, nrows=5, encoding=encoding)
+                        break  # 成功读取就退出循环
+                    except UnicodeDecodeError:
+                        continue
+                    except Exception:
+                        continue
+                
+                if df is None:
+                    st.error("无法以正确编码读取CSV文件")
+                    return
+                    
             elif file_path.endswith('.xlsx'):
                 df = pd.read_excel(file_path, nrows=5, engine='openpyxl')
             else:
