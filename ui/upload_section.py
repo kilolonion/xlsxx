@@ -93,8 +93,32 @@ class UploadSection:
                 validation_result = self.converter.validate_input_file(saved_path)
                 
                 if not validation_result['valid']:
-                    st.error(f"文件验证失败: {validation_result['error']}")
+                    st.error(f"❌ 文件验证失败")
+                    st.error(validation_result['error'])
+                    
+                    # 显示建议
+                    if validation_result.get('warnings'):
+                        for warning in validation_result['warnings']:
+                            st.info(f"💡 {warning}")
+                    
+                    # 提供通用建议
+                    with st.expander("💡 解决方案建议", expanded=False):
+                        st.write("**常见解决方法：**")
+                        st.write("1. 用Microsoft Excel打开文件，检查是否能正常显示")
+                        st.write("2. 在Excel中点击 文件 → 另存为 → 选择Excel工作簿(.xlsx)")
+                        st.write("3. 确保文件没有密码保护")
+                        st.write("4. 检查文件是否完整下载（文件大小是否正常）")
+                        st.write("5. 如果是老版本XLS文件，尝试升级为XLSX格式")
+                    
                     return None
+                
+                # 显示验证成功信息
+                st.success("✅ 文件验证通过")
+                
+                # 显示警告信息（如果有）
+                if validation_result.get('warnings'):
+                    for warning in validation_result['warnings']:
+                        st.warning(f"⚠️ {warning}")
                 
                 # 获取工作表信息
                 sheets = validation_result['sheets']
@@ -121,6 +145,17 @@ class UploadSection:
                 
         except Exception as e:
             st.error(f"处理文件 {uploaded_file.name} 时出错: {str(e)}")
+            
+            # 提供错误诊断信息
+            with st.expander("🔍 错误诊断信息", expanded=False):
+                st.write("**错误详情:**")
+                st.code(str(e))
+                st.write("**可能的原因:**")
+                st.write("- 文件格式不支持或已损坏")
+                st.write("- 文件正在被其他程序使用")
+                st.write("- 系统资源不足")
+                st.write("- 网络传输过程中文件损坏")
+            
             return None
     
     def _render_data_preview(self, file_path: str, sheets: List[str], file_index: int):

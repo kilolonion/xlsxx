@@ -34,6 +34,76 @@ class FileConverter:
         self.supported_input_formats = ['xls', 'xlsx']
         self.supported_output_formats = ['csv', 'pdf', 'xlsx']
     
+    def _read_excel_with_fallback(self, input_path: str, sheet_name: Optional[str] = None, 
+                                 nrows: Optional[int] = None) -> pd.DataFrame:
+        """
+        使用备用引擎读取Excel文件
+        
+        Args:
+            input_path: 输入文件路径
+            sheet_name: 工作表名称，None表示第一个工作表或使用0
+            nrows: 最大读取行数
+            
+        Returns:
+            DataFrame
+            
+        Raises:
+            ConversionError: 当所有引擎都失败时
+        """
+        file_ext = Path(input_path).suffix.lower()
+        
+        # 准备读取参数
+        read_params = {}
+        if sheet_name is not None:
+            read_params['sheet_name'] = sheet_name
+        else:
+            read_params['sheet_name'] = 0  # 默认第一个工作表
+            
+        if nrows is not None:
+            read_params['nrows'] = nrows
+        
+        # 根据文件扩展名确定引擎优先级
+        if file_ext == '.xlsx':
+            engines = ['openpyxl']
+        else:  # .xls
+            engines = ['xlrd', 'openpyxl']
+        
+        last_error = None
+        
+        for engine in engines:
+            try:
+                if engine == 'xlrd':
+                    # xlrd引擎对老版本XLS支持更好
+                    df = pd.read_excel(input_path, engine='xlrd', **read_params)
+                else:
+                    # openpyxl引擎
+                    df = pd.read_excel(input_path, engine='openpyxl', **read_params)
+                
+                # 成功读取，返回结果
+                return df
+                
+            except Exception as e:
+                last_error = e
+                error_msg = str(e).lower()
+                
+                # 记录具体的错误信息
+                if 'no valid workbook part' in error_msg:
+                    st.warning(f"引擎 {engine} 无法读取文件（格式不兼容），尝试备用引擎...")
+                elif 'xlrd' in error_msg and 'xlsx' in error_msg:
+                    st.warning(f"XLS引擎不支持XLSX格式，尝试XLSX引擎...")
+                elif 'file is not a zip file' in error_msg:
+                    st.warning(f"文件可能是老版本XLS格式，尝试专用引擎...")
+                else:
+                    st.warning(f"引擎 {engine} 读取失败: {str(e)[:100]}")
+                
+                continue
+        
+        # 所有引擎都失败了
+        if last_error:
+            raise ConversionError(f"无法读取Excel文件（已尝试所有可用引擎）: {str(last_error)}")
+        else:
+            raise ConversionError("无法读取Excel文件：没有可用的读取引擎")
+    
     def convert_to_csv(self, input_path: str, output_path: str, 
                       encoding: str = 'utf-8-sig', separator: str = ',',
                       sheet_name: Optional[str] = None) -> bool:
@@ -51,11 +121,8 @@ class FileConverter:
             转换是否成功
         """
         try:
-            # 读取Excel文件，强制使用UTF-8编码
-            if sheet_name:
-                df = pd.read_excel(input_path, sheet_name=sheet_name, engine='openpyxl')
-            else:
-                df = pd.read_excel(input_path, sheet_name=0, engine='openpyxl')
+            # 使用增强的读取方法
+            df = self._read_excel_with_fallback(input_path, sheet_name)
             
             # 处理缺失值
             df = df.fillna('')
@@ -89,11 +156,8 @@ class FileConverter:
             转换是否成功
         """
         try:
-            # 读取Excel文件，强制使用openpyxl引擎以确保编码正确
-            if sheet_name:
-                df = pd.read_excel(input_path, sheet_name=sheet_name, engine='openpyxl')
-            else:
-                df = pd.read_excel(input_path, sheet_name=0, engine='openpyxl')
+            # 使用增强的读取方法
+            df = self._read_excel_with_fallback(input_path, sheet_name)
             
             # 处理缺失值
             df = df.fillna('')
@@ -184,15 +248,21 @@ class FileConverter:
         try:
             if sheet_name:
                 # 转换指定工作表
-                df = pd.read_excel(input_path, sheet_name=sheet_name, engine='openpyxl')
+                df = self._read_excel_with_fallback(input_path, sheet_name)
                 df.to_excel(output_path, index=False, sheet_name=sheet_name, engine='openpyxl')
             else:
                 # 转换所有工作表
-                excel_file = pd.ExcelFile(input_path, engine='openpyxl')
-                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                    for sheet in excel_file.sheet_names:
-                        df = pd.read_excel(input_path, sheet_name=sheet, engine='openpyxl')
-                        df.to_excel(writer, sheet_name=sheet, index=False)
+                try:
+                    # 尝试获取所有工作表
+                    all_sheets = self.get_excel_sheets(input_path)
+                    with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                        for sheet in all_sheets:
+                            df = self._read_excel_with_fallback(input_path, sheet)
+                            df.to_excel(writer, sheet_name=sheet, index=False)
+                except Exception:
+                    # 如果失败，只转换第一个工作表
+                    df = self._read_excel_with_fallback(input_path, None)
+                    df.to_excel(output_path, index=False, engine='openpyxl')
             
             return os.path.exists(output_path)
             
@@ -209,12 +279,29 @@ class FileConverter:
         Returns:
             工作表名称列表
         """
-        try:
-            excel_file = pd.ExcelFile(file_path, engine='openpyxl')
-            return excel_file.sheet_names
-        except Exception as e:
-            st.error(f"读取工作表失败: {str(e)}")
-            return []
+        file_ext = Path(file_path).suffix.lower()
+        
+        # 根据文件类型选择引擎
+        if file_ext == '.xlsx':
+            engines = ['openpyxl']
+        else:  # .xls
+            engines = ['xlrd', 'openpyxl']
+        
+        for engine in engines:
+            try:
+                if engine == 'xlrd':
+                    excel_file = pd.ExcelFile(file_path, engine='xlrd')
+                else:
+                    excel_file = pd.ExcelFile(file_path, engine='openpyxl')
+                
+                return excel_file.sheet_names
+                
+            except Exception as e:
+                continue
+        
+        # 如果所有引擎都失败，返回默认工作表名
+        st.warning(f"无法读取工作表信息，使用默认设置")
+        return ['Sheet1']
     
     def preview_excel_data(self, file_path: str, sheet_name: Optional[str] = None, 
                           max_rows: int = 10) -> Optional[pd.DataFrame]:
@@ -230,11 +317,7 @@ class FileConverter:
             DataFrame或None
         """
         try:
-            if sheet_name:
-                df = pd.read_excel(file_path, sheet_name=sheet_name, nrows=max_rows, engine='openpyxl')
-            else:
-                df = pd.read_excel(file_path, sheet_name=0, nrows=max_rows, engine='openpyxl')
-            
+            df = self._read_excel_with_fallback(file_path, sheet_name, nrows=max_rows)
             return df
             
         except Exception as e:
@@ -255,7 +338,8 @@ class FileConverter:
             'valid': False,
             'error': '',
             'file_info': {},
-            'sheets': []
+            'sheets': [],
+            'warnings': []
         }
         
         try:
@@ -277,17 +361,49 @@ class FileConverter:
                 'extension': file_ext
             }
             
-            # 获取工作表信息
+            # 尝试读取文件内容进行验证
             try:
-                sheets = self.get_excel_sheets(file_path)
-                result['sheets'] = sheets
-            except Exception:
-                result['sheets'] = ['Sheet1']  # 默认工作表名
-            
-            result['valid'] = True
-            
+                # 使用备用引擎验证文件可读性
+                test_df = self._read_excel_with_fallback(file_path, None, nrows=1)
+                if test_df is not None and len(test_df.columns) > 0:
+                    result['valid'] = True
+                    
+                    # 获取工作表信息
+                    try:
+                        sheets = self.get_excel_sheets(file_path)
+                        result['sheets'] = sheets
+                        
+                        # 检查是否有空工作表
+                        if not sheets:
+                            result['warnings'].append('未找到有效工作表')
+                            
+                    except Exception as e:
+                        result['warnings'].append(f'读取工作表信息时出现问题: {str(e)[:50]}')
+                        result['sheets'] = ['Sheet1']  # 使用默认工作表名
+                else:
+                    result['error'] = '文件内容为空或格式无效'
+                    
+            except Exception as e:
+                error_msg = str(e).lower()
+                
+                if 'no valid workbook part' in error_msg:
+                    result['error'] = '文件格式损坏或不是有效的Excel文件。请检查文件是否完整，或尝试在Excel中重新保存。'
+                elif 'file is not a zip file' in error_msg:
+                    result['error'] = '文件可能是损坏的Excel文件或不是标准格式。建议用Excel打开并重新保存。'
+                elif 'permission' in error_msg:
+                    result['error'] = '文件被其他程序占用或没有读取权限，请关闭文件后重试。'
+                elif 'corrupt' in error_msg or 'damaged' in error_msg:
+                    result['error'] = '文件已损坏，无法读取。请检查文件完整性。'
+                else:
+                    result['error'] = f'文件验证失败: {str(e)}'
+                    
+                # 为特定错误提供建议
+                if result['error']:
+                    if 'excel' in result['error'].lower():
+                        result['warnings'].append('建议: 用Microsoft Excel打开文件，然后另存为新的Excel文件')
+                    
         except Exception as e:
-            result['error'] = f'文件验证失败: {str(e)}'
+            result['error'] = f'文件验证过程中发生错误: {str(e)}'
         
         return result
     
