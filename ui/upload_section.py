@@ -76,6 +76,12 @@ class UploadSection:
             # 显示文件基本信息
             with st.expander(f"📄 {uploaded_file.name}", expanded=True):
                 col1, col2 = st.columns([2, 1])
+
+                if uploaded_file.size > MAX_FILE_SIZE:
+                    st.error(
+                        f"文件大小超过限制: {self._format_file_size(uploaded_file.size)} / {self._format_file_size(MAX_FILE_SIZE)}"
+                    )
+                    return None
                 
                 with col1:
                     st.write(f"**文件名:** {uploaded_file.name}")

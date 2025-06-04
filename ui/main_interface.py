@@ -74,6 +74,23 @@ class MainInterface:
             layout="wide",
             initial_sidebar_state="expanded"
         )
+
+        # 响应式布局，移动端自动纵向排列
+        st.markdown(
+            """
+            <style>
+                @media screen and (max-width: 768px) {
+                    .stApp [data-testid="stHorizontalBlock"] {
+                        flex-direction: column;
+                    }
+                    .stApp .block-container {
+                        padding: 1rem;
+                    }
+                }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
         
         # 主标题
         col1, col2, col3 = st.columns([1, 2, 1])
